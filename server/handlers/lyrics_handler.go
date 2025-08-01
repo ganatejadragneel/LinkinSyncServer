@@ -27,23 +27,51 @@ func NewLyricsHandler(musicRepo *repositories.MusicRepository, ollamaService oll
 
 // UpdateNowPlaying handles POST /api/now-playing
 func (h *LyricsHandler) UpdateNowPlaying(w http.ResponseWriter, r *http.Request) {
-	// Parse request body
-	var track models.SpotifyTrack
-	if err := json.NewDecoder(r.Body).Decode(&track); err != nil {
+	// Parse request body into generic map first
+	var trackData map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&trackData); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Validate required fields
-	if track.ID == "" || track.Name == "" {
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
-		return
+	// Check if it has a source field (UnifiedTrack) or default to spotify
+	if source, hasSource := trackData["source"]; hasSource && source != nil {
+		// Parse as UnifiedTrack
+		trackBytes, _ := json.Marshal(trackData)
+		var unifiedTrack models.UnifiedTrack
+		if err := json.Unmarshal(trackBytes, &unifiedTrack); err != nil {
+			http.Error(w, "Invalid unified track data", http.StatusBadRequest)
+			return
+		}
+		
+		// Validate required fields
+		if unifiedTrack.ID == "" || unifiedTrack.Name == "" {
+			http.Error(w, "Missing required fields", http.StatusBadRequest)
+			return
+		}
+		
+		// Update the currently playing track
+		h.musicRepo.UpdateNowPlayingUnified(unifiedTrack)
+		log.Printf("Now playing updated (%s): %s by %s", unifiedTrack.Source, unifiedTrack.Name, unifiedTrack.Artist)
+	} else {
+		// Parse as SpotifyTrack for backward compatibility
+		trackBytes, _ := json.Marshal(trackData)
+		var track models.SpotifyTrack
+		if err := json.Unmarshal(trackBytes, &track); err != nil {
+			http.Error(w, "Invalid spotify track data", http.StatusBadRequest)
+			return
+		}
+
+		// Validate required fields
+		if track.ID == "" || track.Name == "" {
+			http.Error(w, "Missing required fields", http.StatusBadRequest)
+			return
+		}
+
+		// Update the currently playing track
+		h.musicRepo.UpdateNowPlaying(track)
+		log.Printf("Now playing updated (spotify): %s by %s", track.Name, track.Artist)
 	}
-
-	// Update the currently playing track
-	h.musicRepo.UpdateNowPlaying(track)
-
-	log.Printf("Now playing updated: %s by %s", track.Name, track.Artist)
 
 	// Return success
 	w.WriteHeader(http.StatusOK)

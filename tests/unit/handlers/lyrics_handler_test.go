@@ -47,6 +47,34 @@ func TestLyricsHandler_UpdateNowPlaying(t *testing.T) {
 	}
 }
 
+func TestLyricsHandler_UpdateNowPlayingUnified(t *testing.T) {
+	handler := createTestHandler()
+	
+	track := models.UnifiedTrack{
+		ID:     "yt123",
+		Name:   "Test YouTube Song",
+		Artist: "Test YouTube Artist",
+		Album:  "Test YouTube Album",
+		Source: "youtube",
+	}
+	
+	body, _ := json.Marshal(track)
+	req := httptest.NewRequest("POST", "/api/now-playing", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	
+	handler.UpdateNowPlaying(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	
+	expected := "Now playing updated"
+	if w.Body.String() != expected {
+		t.Errorf("Expected body %s, got %s", expected, w.Body.String())
+	}
+}
+
 func TestLyricsHandler_UpdateNowPlaying_InvalidJSON(t *testing.T) {
 	handler := createTestHandler()
 	
@@ -64,21 +92,42 @@ func TestLyricsHandler_UpdateNowPlaying_InvalidJSON(t *testing.T) {
 func TestLyricsHandler_UpdateNowPlaying_MissingFields(t *testing.T) {
 	handler := createTestHandler()
 	
-	track := models.SpotifyTrack{
-		Name:   "Test Song",
-		Artist: "Test Artist",
-		// Missing ID
+	testCases := []struct {
+		name string
+		track interface{}
+	}{
+		{
+			name: "SpotifyTrack missing ID",
+			track: models.SpotifyTrack{
+				Name:   "Test Song",
+				Artist: "Test Artist",
+				// Missing ID
+			},
+		},
+		{
+			name: "UnifiedTrack missing ID",
+			track: models.UnifiedTrack{
+				Name:   "Test Song",
+				Artist: "Test Artist",
+				Source: "youtube",
+				// Missing ID
+			},
+		},
 	}
 	
-	body, _ := json.Marshal(track)
-	req := httptest.NewRequest("POST", "/api/now-playing", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	
-	handler.UpdateNowPlaying(w, req)
-	
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			body, _ := json.Marshal(tc.track)
+			req := httptest.NewRequest("POST", "/api/now-playing", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			
+			handler.UpdateNowPlaying(w, req)
+			
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+			}
+		})
 	}
 }
 

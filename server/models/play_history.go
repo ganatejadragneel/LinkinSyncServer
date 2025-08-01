@@ -11,6 +11,7 @@ type PlayHistoryItem struct {
 	TrackName string    `json:"track_name"`
 	Artist    string    `json:"artist"`
 	Album     string    `json:"album"`
+	Source    string    `json:"source,omitempty"`
 	PlayedAt  time.Time `json:"played_at"`
 }
 
@@ -29,8 +30,13 @@ func NewPlayHistory(maxItems int) *PlayHistory {
 	}
 }
 
-// Add adds a new track to the history
+// Add adds a new track from SpotifyTrack to the history
 func (ph *PlayHistory) Add(track SpotifyTrack) {
+	ph.AddUnified(FromSpotifyTrack(track))
+}
+
+// AddUnified adds a new UnifiedTrack to the history
+func (ph *PlayHistory) AddUnified(track UnifiedTrack) {
 	ph.mutex.Lock()
 	defer ph.mutex.Unlock()
 	
@@ -39,6 +45,7 @@ func (ph *PlayHistory) Add(track SpotifyTrack) {
 		TrackName: track.Name,
 		Artist:    track.Artist,
 		Album:     track.Album,
+		Source:    track.Source,
 		PlayedAt:  time.Now(),
 	}
 	

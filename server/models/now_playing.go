@@ -11,6 +11,7 @@ type NowPlaying struct {
 	TrackName string `json:"track_name"`
 	Artist    string `json:"artist"`
 	Album     string `json:"album"`
+	Source    string `json:"source,omitempty"`
 	Lyrics    string `json:"lyrics,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
 	mutex     sync.RWMutex
@@ -21,8 +22,13 @@ func NewNowPlaying() *NowPlaying {
 	return &NowPlaying{}
 }
 
-// Update safely updates the currently playing track
+// Update safely updates the currently playing track from SpotifyTrack
 func (np *NowPlaying) Update(track SpotifyTrack) {
+	np.UpdateUnified(FromSpotifyTrack(track))
+}
+
+// UpdateUnified safely updates the currently playing track from UnifiedTrack
+func (np *NowPlaying) UpdateUnified(track UnifiedTrack) {
 	np.mutex.Lock()
 	defer np.mutex.Unlock()
 	
@@ -30,6 +36,7 @@ func (np *NowPlaying) Update(track SpotifyTrack) {
 	np.TrackName = track.Name
 	np.Artist = track.Artist
 	np.Album = track.Album
+	np.Source = track.Source
 	np.Lyrics = "" // Reset lyrics for new track
 	np.UpdatedAt = time.Now()
 }
@@ -51,6 +58,7 @@ func (np *NowPlaying) Get() NowPlaying {
 		TrackName: np.TrackName,
 		Artist:    np.Artist,
 		Album:     np.Album,
+		Source:    np.Source,
 		Lyrics:    np.Lyrics,
 		UpdatedAt: np.UpdatedAt,
 	}

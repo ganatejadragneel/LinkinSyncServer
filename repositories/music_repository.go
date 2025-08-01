@@ -24,10 +24,16 @@ func NewMusicRepository(geniusService genius.Service) *MusicRepository {
 	}
 }
 
-// UpdateNowPlaying updates the currently playing track
+// UpdateNowPlaying updates the currently playing track from SpotifyTrack
 func (r *MusicRepository) UpdateNowPlaying(track models.SpotifyTrack) {
 	r.nowPlaying.Update(track)
 	r.playHistory.Add(track)
+}
+
+// UpdateNowPlayingUnified updates the currently playing track from UnifiedTrack
+func (r *MusicRepository) UpdateNowPlayingUnified(track models.UnifiedTrack) {
+	r.nowPlaying.UpdateUnified(track)
+	r.playHistory.AddUnified(track)
 }
 
 // GetNowPlaying returns the currently playing track
