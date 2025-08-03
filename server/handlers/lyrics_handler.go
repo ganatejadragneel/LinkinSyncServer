@@ -127,6 +127,11 @@ func (h *LyricsHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 // processChatRequest processes a chat request and returns a response
 func (h *LyricsHandler) processChatRequest(query string) models.ChatResponse {
+	// Check if the query is a song request first
+	if h.isSongRequestQuery(query) {
+		return h.handleSongRequest(query)
+	}
+	
 	// Check if the query is about lyrics/music
 	if h.isLyricsRelatedQuery(query) {
 		return h.handleLyricsQuery(query)
@@ -240,5 +245,105 @@ func (h *LyricsHandler) handleGeneralQuery(query string) models.ChatResponse {
 
 	return models.ChatResponse{
 		Answer: answer,
+	}
+}
+
+// isSongRequestQuery checks if a query is a song request
+func (h *LyricsHandler) isSongRequestQuery(query string) bool {
+	lowerQuery := strings.ToLower(query)
+	
+	songRequestPatterns := []string{
+		"play ", "can you play", "find ", "search for",
+		"put on ", "i want to hear", "i want to listen to",
+		"show me ", "look for ", "get me ",
+	}
+	
+	for _, pattern := range songRequestPatterns {
+		if strings.Contains(lowerQuery, pattern) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// extractSongRequest extracts song name and artist from a song request query
+func (h *LyricsHandler) extractSongRequest(query string) (string, string) {
+	lowerQuery := strings.ToLower(query)
+	
+	// Patterns with "by" separator for artist
+	if strings.Contains(lowerQuery, " by ") {
+		parts := strings.Split(lowerQuery, " by ")
+		if len(parts) == 2 {
+			// Extract song from first part
+			songPart := strings.TrimSpace(parts[0])
+			artistPart := strings.TrimSpace(parts[1])
+			
+			// Remove common prefixes
+			prefixes := []string{"play ", "find ", "search for ", "put on ", "show me ", "look for ", "get me "}
+			for _, prefix := range prefixes {
+				if strings.HasPrefix(songPart, prefix) {
+					songPart = strings.TrimSpace(songPart[len(prefix):])
+					break
+				}
+			}
+			
+			// Clean up quotes
+			songPart = strings.Trim(songPart, `"'`)
+			artistPart = strings.Trim(artistPart, `"'`)
+			
+			if songPart != "" && artistPart != "" {
+				return songPart, artistPart
+			}
+		}
+	}
+	
+	// Patterns without artist - just extract song name
+	songOnlyPatterns := []string{
+		"play ", "find ", "search for ", "put on ", 
+		"show me ", "look for ", "get me ",
+		"can you play ", "i want to hear ", "i want to listen to ",
+	}
+	
+	for _, prefix := range songOnlyPatterns {
+		if strings.HasPrefix(lowerQuery, prefix) {
+			song := strings.TrimSpace(lowerQuery[len(prefix):])
+			// Clean up quotes and common suffixes
+			song = strings.Trim(song, `"'`)
+			song = strings.TrimSuffix(song, " please")
+			song = strings.TrimSuffix(song, " song")
+			
+			if song != "" {
+				return song, ""
+			}
+		}
+	}
+	
+	// If no specific pattern matches, return the whole query as song name
+	return strings.TrimSpace(query), ""
+}
+
+// handleSongRequest handles song request queries
+func (h *LyricsHandler) handleSongRequest(query string) models.ChatResponse {
+	songName, artist := h.extractSongRequest(query)
+	
+	// Create song query object
+	songQuery := &models.SongQuery{
+		Query:  songName,
+		Artist: artist,
+	}
+	
+	// Create response message
+	var responseMsg string
+	if artist != "" {
+		responseMsg = fmt.Sprintf("I'm searching for \"%s\" by %s in your playlists. Let me show you what I found!", songName, artist)
+	} else {
+		responseMsg = fmt.Sprintf("I'm searching for \"%s\" in your playlists. Let me show you what I found!", songName)
+	}
+	
+	return models.ChatResponse{
+		Answer:    responseMsg,
+		Type:      "song_request",
+		SongQuery: songQuery,
 	}
 }
