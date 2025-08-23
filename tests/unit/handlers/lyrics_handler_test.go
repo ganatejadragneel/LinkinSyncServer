@@ -16,8 +16,10 @@ import (
 func createTestHandler() *handlers.LyricsHandler {
 	mockGenius := &mocks.MockGeniusService{}
 	mockOllama := &mocks.MockOllamaService{}
+	mockMood := &mocks.MockMoodService{}
+	mockSpotify := &mocks.MockSpotifyService{}
 	musicRepo := repositories.NewMusicRepository(mockGenius)
-	return handlers.NewLyricsHandler(musicRepo, mockOllama)
+	return handlers.NewLyricsHandler(musicRepo, mockOllama, mockMood, mockSpotify)
 }
 
 func TestLyricsHandler_UpdateNowPlaying(t *testing.T) {
@@ -147,8 +149,10 @@ func TestLyricsHandler_GetNowPlaying_NoSong(t *testing.T) {
 func TestLyricsHandler_GetNowPlaying_WithSong(t *testing.T) {
 	mockGenius := &mocks.MockGeniusService{}
 	mockOllama := &mocks.MockOllamaService{}
+	mockMood := &mocks.MockMoodService{}
+	mockSpotify := &mocks.MockSpotifyService{}
 	musicRepo := repositories.NewMusicRepository(mockGenius)
-	handler := handlers.NewLyricsHandler(musicRepo, mockOllama)
+	handler := handlers.NewLyricsHandler(musicRepo, mockOllama, mockMood, mockSpotify)
 	
 	// First update a song
 	track := models.SpotifyTrack{
@@ -182,8 +186,10 @@ func TestLyricsHandler_GetNowPlaying_WithSong(t *testing.T) {
 func TestLyricsHandler_GetPlayHistory(t *testing.T) {
 	mockGenius := &mocks.MockGeniusService{}
 	mockOllama := &mocks.MockOllamaService{}
+	mockMood := &mocks.MockMoodService{}
+	mockSpotify := &mocks.MockSpotifyService{}
 	musicRepo := repositories.NewMusicRepository(mockGenius)
-	handler := handlers.NewLyricsHandler(musicRepo, mockOllama)
+	handler := handlers.NewLyricsHandler(musicRepo, mockOllama, mockMood, mockSpotify)
 	
 	// Add a song to history
 	track := models.SpotifyTrack{
@@ -289,8 +295,10 @@ func TestLyricsHandler_HandleChat_LyricsQuery_WithSong(t *testing.T) {
 			return "Mock analysis of the song", nil
 		},
 	}
+	mockMood := &mocks.MockMoodService{}
+	mockSpotify := &mocks.MockSpotifyService{}
 	musicRepo := repositories.NewMusicRepository(mockGenius)
-	handler := handlers.NewLyricsHandler(musicRepo, mockOllama)
+	handler := handlers.NewLyricsHandler(musicRepo, mockOllama, mockMood, mockSpotify)
 	
 	// Add a song
 	track := models.SpotifyTrack{
@@ -362,8 +370,10 @@ func TestLyricsHandler_HandleChat_GeneralQuery_Music(t *testing.T) {
 		},
 	}
 	mockGenius := &mocks.MockGeniusService{}
+	mockMood := &mocks.MockMoodService{}
+	mockSpotify := &mocks.MockSpotifyService{}
 	musicRepo := repositories.NewMusicRepository(mockGenius)
-	handler := handlers.NewLyricsHandler(musicRepo, mockOllama)
+	handler := handlers.NewLyricsHandler(musicRepo, mockOllama, mockMood, mockSpotify)
 	
 	chatReq := models.ChatRequest{Query: "What is jazz music?"}
 	body, _ := json.Marshal(chatReq)
@@ -395,8 +405,10 @@ func TestLyricsHandler_HandleChat_OllamaError_MusicQuery(t *testing.T) {
 		},
 	}
 	mockGenius := &mocks.MockGeniusService{}
+	mockMood := &mocks.MockMoodService{}
+	mockSpotify := &mocks.MockSpotifyService{}
 	musicRepo := repositories.NewMusicRepository(mockGenius)
-	handler := handlers.NewLyricsHandler(musicRepo, mockOllama)
+	handler := handlers.NewLyricsHandler(musicRepo, mockOllama, mockMood, mockSpotify)
 	
 	chatReq := models.ChatRequest{Query: "What is jazz music?"}
 	body, _ := json.Marshal(chatReq)
@@ -472,8 +484,10 @@ func TestLyricsHandler_HandleChat_MusicQueries(t *testing.T) {
 		},
 	}
 	mockGenius := &mocks.MockGeniusService{}
+	mockMood := &mocks.MockMoodService{}
+	mockSpotify := &mocks.MockSpotifyService{}
 	musicRepo := repositories.NewMusicRepository(mockGenius)
-	handler := handlers.NewLyricsHandler(musicRepo, mockOllama)
+	handler := handlers.NewLyricsHandler(musicRepo, mockOllama, mockMood, mockSpotify)
 	
 	musicQueries := []string{
 		"What is jazz music?",

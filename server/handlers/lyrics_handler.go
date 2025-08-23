@@ -3,7 +3,9 @@ package handlers
 import (
 	"backend/repositories"
 	"backend/server/models"
+	"backend/services/mood"
 	"backend/services/ollama"
+	"backend/services/spotify"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,15 +15,24 @@ import (
 
 // LyricsHandler handles lyrics-related HTTP requests
 type LyricsHandler struct {
-	musicRepo     *repositories.MusicRepository
-	ollamaService ollama.Service
+	musicRepo      *repositories.MusicRepository
+	ollamaService  ollama.Service
+	moodService    mood.Service
+	spotifyService spotify.Service
 }
 
 // NewLyricsHandler creates a new lyrics handler
-func NewLyricsHandler(musicRepo *repositories.MusicRepository, ollamaService ollama.Service) *LyricsHandler {
+func NewLyricsHandler(
+	musicRepo *repositories.MusicRepository,
+	ollamaService ollama.Service,
+	moodService mood.Service,
+	spotifyService spotify.Service,
+) *LyricsHandler {
 	return &LyricsHandler{
-		musicRepo:     musicRepo,
-		ollamaService: ollamaService,
+		musicRepo:      musicRepo,
+		ollamaService:  ollamaService,
+		moodService:    moodService,
+		spotifyService: spotifyService,
 	}
 }
 
@@ -130,6 +141,11 @@ func (h *LyricsHandler) processChatRequest(query string) models.ChatResponse {
 	// Check if the query is a song request first
 	if h.isSongRequestQuery(query) {
 		return h.handleSongRequest(query)
+	}
+	
+	// Check if the query contains emotional content that needs mood-based recommendations
+	if h.containsEmotionalContent(query) {
+		return h.handleMoodBasedQuery(query)
 	}
 	
 	// Check if the query is about lyrics/music
@@ -346,4 +362,326 @@ func (h *LyricsHandler) handleSongRequest(query string) models.ChatResponse {
 		Type:      "song_request",
 		SongQuery: songQuery,
 	}
+}
+
+// containsEmotionalContent checks if the query contains emotional or mood-related content
+func (h *LyricsHandler) containsEmotionalContent(query string) bool {
+	lowerQuery := strings.ToLower(query)
+	
+	// Emotional keywords that suggest mood-based recommendations
+	emotionalKeywords := []string{
+		"feel", "feeling", "mood", "emotion", "sad", "happy", "angry", "upset",
+		"depressed", "anxious", "lonely", "alone", "stressed", "overwhelmed",
+		"excited", "joy", "love", "hate", "frustrated", "confused", "lost",
+		"hurt", "broken", "empty", "hopeless", "worried", "scared", "afraid",
+		"nervous", "calm", "peaceful", "nostalgic", "miss", "remember",
+		"belong", "disconnected", "isolated", "abandoned", "rejected",
+		"won", "victory", "celebrate", "celebration", "achievement", "accomplished",
+		"tournament", "competition", "winning", "winner",
+	}
+	
+	// Check for emotional content
+	for _, keyword := range emotionalKeywords {
+		if strings.Contains(lowerQuery, keyword) {
+			// Additional context check - ensure it's about the user's feelings
+			personalIndicators := []string{"i ", "i'm", "i am", "me ", "my ", "feel", "feeling"}
+			for _, indicator := range personalIndicators {
+				if strings.Contains(lowerQuery, indicator) {
+					log.Printf("Emotional content detected in query: '%s' (keyword: %s, indicator: %s)", 
+						query, keyword, indicator)
+					return true
+				}
+			}
+		}
+	}
+	
+	log.Printf("No emotional content detected in query: '%s'", query)
+	return false
+}
+
+// handleMoodBasedQuery handles queries that contain emotional content
+func (h *LyricsHandler) handleMoodBasedQuery(query string) models.ChatResponse {
+	// Detect mood from the query
+	moodAnalysis, err := h.moodService.DetectMood(query)
+	if err != nil {
+		log.Printf("Error detecting mood: %v", err)
+		return h.handleGeneralQuery(query) // Fallback to general query
+	}
+	
+	// Get user's playlists and liked songs
+	userTracks, err := h.getUserLibraryTracks()
+	if err != nil {
+		log.Printf("Error getting user tracks: %v", err)
+		return models.ChatResponse{
+			Answer: "I understand you're feeling " + moodAnalysis.PrimaryMood + ", but I'm having trouble accessing your music library right now. Please try again later.",
+			MoodAnalysis: moodAnalysis,
+		}
+	}
+	
+	// Find mood-matched songs from user's library (5 songs)
+	libraryMatches, err := h.moodService.MatchSongsToMood(moodAnalysis, userTracks, 5)
+	if err != nil {
+		log.Printf("Error matching songs to mood: %v", err)
+	}
+	
+	// Get general song suggestions (10 songs)
+	generalSuggestions := h.getGeneralMoodSuggestions(moodAnalysis.PrimaryMood, 10)
+	
+	// Create empathetic response
+	response := h.createEmpatheticResponse(moodAnalysis.PrimaryMood, query)
+	
+	// Save mood history (using a dummy user ID for now - should get from auth context)
+	userID := "default_user" // TODO: Get actual user ID from request context
+	var playedSongIDs []string
+	for _, match := range libraryMatches {
+		playedSongIDs = append(playedSongIDs, match.Track.ID)
+	}
+	h.moodService.SaveUserMoodHistory(userID, moodAnalysis.PrimaryMood, playedSongIDs)
+	
+	log.Printf("Mood detected: %s, Library matches: %d, General suggestions: %d", 
+		moodAnalysis.PrimaryMood, len(libraryMatches), len(generalSuggestions))
+	
+	return models.ChatResponse{
+		Answer:       response,
+		Type:         "mood_recommendation",
+		MoodAnalysis: moodAnalysis,
+		Recommendations: &models.MoodRecommendations{
+			FromLibrary: libraryMatches,
+			Suggested:   generalSuggestions,
+		},
+	}
+}
+
+// getUserLibraryTracks gets tracks from user's playlists and liked songs
+func (h *LyricsHandler) getUserLibraryTracks() ([]models.UnifiedTrack, error) {
+	var allTracks []models.UnifiedTrack
+	
+	// TODO: This should get the actual user's access token from request context
+	// For now, returning empty slice
+	// In production, this would:
+	// 1. Get user's Spotify playlists and liked songs
+	// 2. Get user's YouTube liked videos (music only)
+	// 3. Combine and deduplicate
+	
+	return allTracks, nil
+}
+
+// getGeneralMoodSuggestions returns general song suggestions for a mood
+func (h *LyricsHandler) getGeneralMoodSuggestions(mood string, limit int) []models.MoodBasedRecommendation {
+	// Predefined mood-based suggestions
+	moodSuggestions := map[string][]models.MoodBasedRecommendation{
+		"lonely": {
+			{
+				Track: models.UnifiedTrack{
+					ID:     "1mea3bSkSGXuIRvnydlB5b", // Real Spotify ID for "Somewhere I Belong"
+					Name:   "Somewhere I Belong",
+					Artist: "Linkin Park",
+					Album:  "Meteora",
+					Source: "spotify",
+				},
+				MoodScore:   0.95,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "4N3y2ChKKCG3zVCfyNiMQD", // Real Spotify ID for "Mad World"
+					Name:   "Mad World",
+					Artist: "Gary Jules",
+					Album:  "Trading Snakeoil for Wolftickets",
+					Source: "spotify",
+				},
+				MoodScore:   0.90,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "u9HBEOlMgOtK8yXGKKMhRx", // Real Spotify ID for "The Sound of Silence"
+					Name:   "The Sound of Silence",
+					Artist: "Disturbed",
+					Album:  "Immortalized",
+					Source: "spotify",
+				},
+				MoodScore:   0.88,
+			},
+		},
+		"sad": {
+			{
+				Track: models.UnifiedTrack{
+					ID:     "2DjPkzR89MSYPGaWhK8uKQ", // Real Spotify ID for "Hurt" by Johnny Cash
+					Name:   "Hurt",
+					Artist: "Johnny Cash",
+					Album:  "American IV: The Man Comes Around",
+					Source: "spotify",
+				},
+				MoodScore:   0.95,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "0SiQrCn2h2aKOEqz5Zxwow", // Real Spotify ID for "The Night We Met"
+					Name:   "The Night We Met",
+					Artist: "Lord Huron",
+					Album:  "Strange Trails",
+					Source: "spotify",
+				},
+				MoodScore:   0.90,
+			},
+		},
+		"happy": {
+			{
+				Track: models.UnifiedTrack{
+					ID:     "3BxnGCLFNdLKgVgVz6Vn5H", // Real Spotify ID for "Good Life"
+					Name:   "Good Life",
+					Artist: "OneRepublic",
+					Album:  "Waking Up",
+					Source: "spotify",
+				},
+				MoodScore:   0.95,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "05wIrZSwuaVWhcv5FfqeJ0", // Real Spotify ID for "Walking on Sunshine"
+					Name:   "Walking on Sunshine",
+					Artist: "Katrina and the Waves",
+					Album:  "Walking on Sunshine",
+					Source: "spotify",
+				},
+				MoodScore:   0.93,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "60nZcImufyMA1MKQY3dcCH", // Real Spotify ID for "Happy"
+					Name:   "Happy",
+					Artist: "Pharrell Williams",
+					Album:  "G I R L",
+					Source: "spotify",
+				},
+				MoodScore:   0.98,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "0BxE4FqsDD1Ot4YuBXwn8F", // Real Spotify ID for "Can't Stop the Feeling!"
+					Name:   "Can't Stop the Feeling!",
+					Artist: "Justin Timberlake",
+					Album:  "Trolls (Original Motion Picture Soundtrack)",
+					Source: "spotify",
+				},
+				MoodScore:   0.96,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "32OlwWuMpZ6b0aN2RZOeMS", // Real Spotify ID for "Uptown Funk"
+					Name:   "Uptown Funk",
+					Artist: "Mark Ronson ft. Bruno Mars",
+					Album:  "Uptown Special",
+					Source: "spotify",
+				},
+				MoodScore:   0.94,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "1WkMMavIMc4JZ8cfMmxHkI", // Real Spotify ID for "Good as Hell"
+					Name:   "Good as Hell",
+					Artist: "Lizzo",
+					Album:  "Cuz I Love You",
+					Source: "spotify",
+				},
+				MoodScore:   0.92,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "0CFuMybe6s77w6QQrJjW7d", // Real Spotify ID for "I'm Gonna Be (500 Miles)"
+					Name:   "I'm Gonna Be (500 Miles)",
+					Artist: "The Proclaimers",
+					Album:  "Sunshine on Leith",
+					Source: "spotify",
+				},
+				MoodScore:   0.90,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "5T8EDUDqKcs6OSOwEsfqG7", // Real Spotify ID for "Don't Stop Me Now"
+					Name:   "Don't Stop Me Now",
+					Artist: "Queen",
+					Album:  "Jazz",
+					Source: "spotify",
+				},
+				MoodScore:   0.88,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "2RlgNHKcydI9sayD2Df2xp", // Real Spotify ID for "Mr. Blue Sky"
+					Name:   "Mr. Blue Sky",
+					Artist: "Electric Light Orchestra",
+					Album:  "Out of the Blue",
+					Source: "spotify",
+				},
+				MoodScore:   0.86,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "3PPogGhAUjr4FLGzEFGzJI", // Real Spotify ID for "Best Day of My Life"
+					Name:   "Best Day of My Life",
+					Artist: "American Authors",
+					Album:  "Oh, What a Life",
+					Source: "spotify",
+				},
+				MoodScore:   0.84,
+			},
+		},
+		"angry": {
+			{
+				Track: models.UnifiedTrack{
+					ID:     "2OzEKCmOoWhyuB8nHi8xhv", // Real Spotify ID for "Break Stuff"
+					Name:   "Break Stuff",
+					Artist: "Limp Bizkit",
+					Album:  "Significant Other",
+					Source: "spotify",
+				},
+				MoodScore:   0.95,
+			},
+			{
+				Track: models.UnifiedTrack{
+					ID:     "0yp7ORA8XPNO4kvNj5EYdx", // Real Spotify ID for "Bodies"
+					Name:   "Bodies",
+					Artist: "Drowning Pool",
+					Album:  "Sinner",
+					Source: "spotify",
+				},
+				MoodScore:   0.92,
+			},
+		},
+	}
+	
+	// Get suggestions for the mood
+	suggestions, exists := moodSuggestions[mood]
+	if !exists {
+		// Default suggestions if mood not found
+		suggestions = moodSuggestions["sad"]
+	}
+	
+	// Return up to limit suggestions
+	if len(suggestions) > limit {
+		return suggestions[:limit]
+	}
+	
+	return suggestions
+}
+
+// createEmpatheticResponse creates an empathetic response based on mood
+func (h *LyricsHandler) createEmpatheticResponse(mood, originalQuery string) string {
+	responses := map[string]string{
+		"lonely":    "I hear you're feeling disconnected right now. Sometimes music can be a companion when we feel alone. Here are some songs that explore similar feelings and might resonate with you:",
+		"sad":       "I understand you're going through a difficult time. Music has a way of expressing what we can't always put into words. These songs might help you process these feelings:",
+		"happy":     "It's wonderful that you're feeling so positive! Let's keep that energy going with some uplifting tracks that match your mood:",
+		"angry":     "I can sense your frustration. Sometimes we need music that matches our intensity and helps us release these feelings. Here are some powerful tracks for you:",
+		"anxious":   "I understand you're feeling overwhelmed. These songs might help you find some calm or at least know you're not alone in feeling this way:",
+		"nostalgic": "Ah, feeling nostalgic... Music has a unique way of taking us back. Here are some songs that capture that bittersweet feeling of remembering:",
+		"energetic": "You're full of energy! Let's channel that into some high-powered tracks that'll keep you motivated:",
+		"calm":      "Finding your peace... Here are some tranquil songs to help maintain that serene state of mind:",
+	}
+	
+	response, exists := responses[mood]
+	if !exists {
+		response = fmt.Sprintf("I can sense you're feeling %s. Music has a way of connecting with our emotions. Here are some songs that might resonate with how you're feeling:", mood)
+	}
+	
+	return response
 }

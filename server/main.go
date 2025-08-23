@@ -7,7 +7,9 @@ import (
 	"backend/server/database"
 	"backend/server/handlers"
 	"backend/services/genius"
+	"backend/services/mood"
 	"backend/services/ollama"
+	"backend/services/spotify"
 	"database/sql"
 	"fmt"
 	"log"
@@ -41,11 +43,11 @@ func main() {
 		AccessToken: cfg.Genius.AccessToken,
 	})
 
-	// Note: Spotify service can be initialized here if needed for future features
-	// spotifyService := spotify.New(spotify.Config{
-	//     ClientID:     cfg.Spotify.ClientID,
-	//     ClientSecret: cfg.Spotify.ClientSecret,
-	// })
+	// Initialize Spotify service
+	spotifyService := spotify.New(spotify.Config{
+		ClientID:     cfg.Spotify.ClientID,
+		ClientSecret: cfg.Spotify.ClientSecret,
+	})
 
 	ollamaService := ollama.New(ollama.Config{
 		BaseURL:     cfg.Ollama.BaseURL,
@@ -61,11 +63,15 @@ func main() {
 	}
 	log.Println("Successfully connected to Ollama server")
 
+	// Initialize mood service with data directory
+	dataDir := "./data" // You can make this configurable
+	moodService := mood.New(geniusService, ollamaService, dataDir)
+
 	// Initialize repositories
 	musicRepo := repositories.NewMusicRepository(geniusService)
 
 	// Initialize handlers
-	lyricsHandler := handlers.NewLyricsHandler(musicRepo, ollamaService)
+	lyricsHandler := handlers.NewLyricsHandler(musicRepo, ollamaService, moodService, spotifyService)
 	chatHandler := handlers.NewChatHandler(db)
 
 	// Setup routes
