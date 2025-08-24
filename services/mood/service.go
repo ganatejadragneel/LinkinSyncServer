@@ -3,7 +3,6 @@ package mood
 import (
 	"backend/server/models"
 	"backend/services/genius"
-	"backend/services/ollama"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -14,24 +13,29 @@ import (
 	"time"
 )
 
+// AIService defines the interface for AI services (both Ollama and OpenAI)
+type AIService interface {
+	GenerateResponse(prompt string) (string, error)
+}
+
 // service implements the Mood Service interface
 type service struct {
 	geniusService genius.Service
-	ollamaService ollama.Service
+	aiService     AIService  // Can be either Ollama or OpenAI
 	lyricsCache   map[string]*LyricsWithMood
 	cacheMutex    sync.RWMutex
 	dataDir       string
 }
 
 // New creates a new Mood service
-func New(geniusService genius.Service, ollamaService ollama.Service, dataDir string) Service {
+func New(geniusService genius.Service, aiService AIService, dataDir string) Service {
 	// Create data directory if it doesn't exist
 	moodHistoryDir := filepath.Join(dataDir, "mood_history")
 	os.MkdirAll(moodHistoryDir, 0755)
 	
 	return &service{
 		geniusService: geniusService,
-		ollamaService: ollamaService,
+		aiService:     aiService,
 		lyricsCache:   make(map[string]*LyricsWithMood),
 		dataDir:       dataDir,
 	}
@@ -49,8 +53,8 @@ Important: Respond ONLY with valid JSON, no additional text.
 
 User message: "%s"`, message)
 
-	// Get response from Ollama
-	response, err := s.ollamaService.GenerateResponse(prompt)
+	// Get response from AI service
+	response, err := s.aiService.GenerateResponse(prompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect mood: %w", err)
 	}
@@ -190,7 +194,7 @@ Important: Respond ONLY with valid JSON.
 Lyrics:
 %s`, lyrics)
 
-	response, err := s.ollamaService.GenerateResponse(moodPrompt)
+	response, err := s.aiService.GenerateResponse(moodPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze lyrics mood: %w", err)
 	}

@@ -8,7 +8,8 @@ import (
 	"backend/server/handlers"
 	"backend/services/genius"
 	"backend/services/mood"
-	"backend/services/ollama"
+	// "backend/services/ollama"  // Uncomment when using Ollama
+	"backend/services/openai"
 	"backend/services/spotify"
 	"database/sql"
 	"fmt"
@@ -49,6 +50,10 @@ func main() {
 		ClientSecret: cfg.Spotify.ClientSecret,
 	})
 
+	// AI SERVICE CONFIGURATION - Comment/Uncomment to switch between providers
+	
+	// === OLLAMA CONFIGURATION (CURRENTLY COMMENTED - UNCOMMENT TO USE) ===
+	/*
 	ollamaService := ollama.New(ollama.Config{
 		BaseURL:     cfg.Ollama.BaseURL,
 		Model:       cfg.Ollama.Model,
@@ -62,16 +67,36 @@ func main() {
 		log.Fatalf("Error connecting to Ollama: %v - Make sure Ollama is running with 'ollama serve'", err)
 	}
 	log.Println("Successfully connected to Ollama server")
+	*/
+	
+	// === OPENAI CONFIGURATION (CURRENTLY ACTIVE - COMMENT TO DISABLE) ===
+	openaiService := openai.New(openai.Config{
+		APIKey:      cfg.OpenAI.APIKey,
+		Model:       cfg.OpenAI.Model,
+		BaseURL:     cfg.OpenAI.BaseURL,
+		Temperature: cfg.OpenAI.Temperature,
+		MaxTokens:   cfg.OpenAI.MaxTokens,
+		TopP:        cfg.OpenAI.TopP,
+	})
+
+	// Check if OpenAI is available
+	if err := openaiService.IsAvailable(); err != nil {
+		log.Fatalf("Error connecting to OpenAI: %v - Make sure OPENAI_API_KEY is set", err)
+	}
+	log.Println("Successfully connected to OpenAI API")
 
 	// Initialize mood service with data directory
 	dataDir := "./data" // You can make this configurable
-	moodService := mood.New(geniusService, ollamaService, dataDir)
+	// Choose which AI service to use for mood service - comment/uncomment accordingly
+	// moodService := mood.New(geniusService, ollamaService, dataDir)  // Use Ollama
+	moodService := mood.New(geniusService, openaiService, dataDir)  // Use OpenAI
 
 	// Initialize repositories
 	musicRepo := repositories.NewMusicRepository(geniusService)
 
-	// Initialize handlers
-	lyricsHandler := handlers.NewLyricsHandler(musicRepo, ollamaService, moodService, spotifyService)
+	// Initialize handlers - choose which AI service to use
+	// lyricsHandler := handlers.NewLyricsHandler(musicRepo, ollamaService, moodService, spotifyService)  // Use Ollama
+	lyricsHandler := handlers.NewLyricsHandler(musicRepo, openaiService, moodService, spotifyService)  // Use OpenAI
 	chatHandler := handlers.NewChatHandler(db)
 
 	// Setup routes
@@ -90,8 +115,15 @@ func main() {
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	log.Printf("Server starting on %s", addr)
-	log.Printf("Make sure Ollama is running: ollama serve")
-	log.Printf("Make sure you have the model: ollama pull %s", cfg.Ollama.Model)
+	
+	// AI Service instructions based on current configuration
+	log.Printf("AI Service: OpenAI API (gpt-3.5-turbo)")
+	log.Printf("Make sure OPENAI_API_KEY environment variable is set")
+	
+	// Uncomment these when using Ollama:
+	// log.Printf("AI Service: Ollama (%s)", cfg.Ollama.Model) 
+	// log.Printf("Make sure Ollama is running: ollama serve")
+	// log.Printf("Make sure you have the model: ollama pull %s", cfg.Ollama.Model)
 	
 	if err := http.ListenAndServe(addr, c.Handler(handler)); err != nil {
 		log.Fatal("Server failed to start:", err)

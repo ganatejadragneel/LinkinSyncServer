@@ -14,6 +14,7 @@ type Config struct {
 	Spotify  SpotifyConfig
 	Genius   GeniusConfig
 	Ollama   OllamaConfig
+	OpenAI   OpenAIConfig
 }
 
 // ServerConfig holds server configuration
@@ -51,6 +52,16 @@ type OllamaConfig struct {
 	TopK        int
 }
 
+// OpenAIConfig holds OpenAI API configuration
+type OpenAIConfig struct {
+	APIKey      string
+	Model       string
+	BaseURL     string
+	Temperature float64
+	MaxTokens   int
+	TopP        float64
+}
+
 // Load loads configuration from environment variables
 func Load() (*Config, error) {
 	// Load .env file if it exists
@@ -84,6 +95,14 @@ func Load() (*Config, error) {
 			Temperature: 0.7,
 			TopP:        0.9,
 			TopK:        40,
+		},
+		OpenAI: OpenAIConfig{
+			APIKey:      getEnvWithDefault("OPENAI_API_KEY", ""),
+			Model:       getEnvWithDefault("OPENAI_MODEL", "gpt-3.5-turbo"),
+			BaseURL:     getEnvWithDefault("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+			Temperature: 0.7,
+			MaxTokens:   500,
+			TopP:        0.9,
 		},
 	}
 

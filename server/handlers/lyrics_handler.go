@@ -4,7 +4,8 @@ import (
 	"backend/repositories"
 	"backend/server/models"
 	"backend/services/mood"
-	"backend/services/ollama"
+	// "backend/services/ollama"  // Uncomment when using Ollama
+	"backend/services/openai"
 	"backend/services/spotify"
 	"encoding/json"
 	"fmt"
@@ -13,10 +14,20 @@ import (
 	"strings"
 )
 
+// AIService defines a common interface for AI services (both Ollama and OpenAI)
+type AIService interface {
+	AnalyzeLyrics(query, lyrics, songInfo string) (string, error)
+	GenerateResponse(prompt string) (string, error)
+	IsAvailable() error
+}
+
 // LyricsHandler handles lyrics-related HTTP requests
 type LyricsHandler struct {
 	musicRepo      *repositories.MusicRepository
-	ollamaService  ollama.Service
+	// AI Services - comment/uncomment to switch between providers
+	aiService      AIService  // Currently active AI service
+	// ollamaService  ollama.Service  // Uncomment to use Ollama
+	openaiService  openai.Service  // Comment to disable OpenAI
 	moodService    mood.Service
 	spotifyService spotify.Service
 }
@@ -24,16 +35,24 @@ type LyricsHandler struct {
 // NewLyricsHandler creates a new lyrics handler
 func NewLyricsHandler(
 	musicRepo *repositories.MusicRepository,
-	ollamaService ollama.Service,
+	// ollamaService ollama.Service,  // Uncomment to use Ollama
+	openaiService openai.Service,  // Comment to disable OpenAI
 	moodService mood.Service,
 	spotifyService spotify.Service,
 ) *LyricsHandler {
-	return &LyricsHandler{
+	handler := &LyricsHandler{
 		musicRepo:      musicRepo,
-		ollamaService:  ollamaService,
+		// ollamaService:  ollamaService,  // Uncomment to use Ollama
+		openaiService:  openaiService,  // Comment to disable OpenAI
 		moodService:    moodService,
 		spotifyService: spotifyService,
 	}
+	
+	// Set the active AI service - comment/uncomment to switch
+	// handler.aiService = ollamaService  // Use Ollama
+	handler.aiService = openaiService  // Use OpenAI
+	
+	return handler
 }
 
 // UpdateNowPlaying handles POST /api/now-playing
@@ -228,8 +247,8 @@ func (h *LyricsHandler) handleLyricsQuery(query string) models.ChatResponse {
 		}
 	}
 
-	// Ask Ollama to analyze the lyrics
-	answer, err := h.ollamaService.AnalyzeLyrics(query, lyrics, songInfo)
+	// Ask AI service to analyze the lyrics
+	answer, err := h.aiService.AnalyzeLyrics(query, lyrics, songInfo)
 	if err != nil {
 		return models.ChatResponse{
 			Error: fmt.Sprintf("Error analyzing lyrics: %v", err),
@@ -252,7 +271,7 @@ func (h *LyricsHandler) handleGeneralQuery(query string) models.ChatResponse {
 
 	// For music-related general queries, provide a concise response
 	musicPrompt := fmt.Sprintf("Answer this music question in EXACTLY 2 short paragraphs. Keep it brief - maximum 4-5 sentences per paragraph: %s", query)
-	answer, err := h.ollamaService.GenerateResponse(musicPrompt)
+	answer, err := h.aiService.GenerateResponse(musicPrompt)
 	if err != nil {
 		return models.ChatResponse{
 			Error: fmt.Sprintf("Error generating response: %v", err),
